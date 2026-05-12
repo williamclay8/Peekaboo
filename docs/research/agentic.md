@@ -43,14 +43,14 @@ Docs:
 
 ### PR #47 “enhancements” scaffolding
 
-These types and helpers were merged into `main` but are largely **not integrated** into the production tool-call path yet:
+These types and helpers were merged into `main`; the verification path is now integrated into the shared tool-call loop, while per-turn context refresh and retry policy still have follow-up work:
 
 - `AgentEnhancementOptions`
 - `SmartCaptureService` (diff-aware capture, region capture)
 - `ActionVerifier` (post-action screenshot verification via AI)
 - `PeekabooAgentService+Enhancements.swift` helpers (`executeToolWithVerification`, `runEnhancedStreamingLoop`, …)
 
-## What did not ship from PR #47
+## What still needs tightening from PR #47
 
 Intentionally not carried over from the original PR diff:
 
@@ -175,7 +175,7 @@ Goal: reduce accidental leakage when clipboard contains secrets.
 What exists:
 
 - `ActionVerifier` can capture a post-action screenshot and ask a model to judge success.
-- `executeToolWithVerification(...)` exists in `PeekabooAgentService+Enhancements.swift`, but is not called from the real streaming loop.
+- `executeToolWithVerification(...)` still exists for direct callers, but the shared streaming loop now uses verification metadata when `verifyActions` is enabled.
 
 What’s missing:
 
@@ -255,7 +255,7 @@ This reduces prompt injection “instruction smuggling” across nodes.
 2. Add “tool-result” variant for desktop context (behind a flag):
    - compare behavior across OpenAI/Anthropic,
    - keep current system policy + user payload as fallback.
-3. Wire verification into tool execution (behind `verifyActions` flag):
+3. Continue tightening verification behavior (behind `verifyActions` flag):
    - start with `click/type/hotkey/press/scroll/drag`,
    - default off.
 4. Smart capture ROI + downscale for verifier.
@@ -272,4 +272,3 @@ This reduces prompt injection “instruction smuggling” across nodes.
   - cheapest vision model available,
   - or local/offline (Ollama) when configured?
 - How to keep verification from creating privacy regressions (unnecessary screenshot uploads)?
-

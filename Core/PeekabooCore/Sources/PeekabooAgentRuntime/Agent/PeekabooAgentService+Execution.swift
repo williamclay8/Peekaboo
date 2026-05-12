@@ -232,7 +232,8 @@ extension PeekabooAgentService {
             model: configuration.model,
             tools: configuration.tools,
             eventHandler: configuration.eventHandler,
-            sessionId: configuration.sessionId)
+            sessionId: configuration.sessionId,
+            enhancementOptions: configuration.enhancementOptions)
 
         let resolvedConfiguration = TachikomaConfiguration.resolve(.current)
         let provider = try resolvedConfiguration.makeProvider(for: configuration.model)

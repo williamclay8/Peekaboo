@@ -29,7 +29,22 @@ extension PeekabooAgentService {
         let tools: [AgentTool]
         let eventHandler: EventHandler?
         let sessionId: String
+        let enhancementOptions: AgentEnhancementOptions?
         let turnBoundary = AgentTurnBoundary()
+
+        init(
+            model: LanguageModel,
+            tools: [AgentTool],
+            eventHandler: EventHandler?,
+            sessionId: String,
+            enhancementOptions: AgentEnhancementOptions? = nil)
+        {
+            self.model = model
+            self.tools = tools
+            self.eventHandler = eventHandler
+            self.sessionId = sessionId
+            self.enhancementOptions = enhancementOptions
+        }
 
         func tool(named name: String) -> AgentTool? {
             self.tools.first { $0.name == name }
@@ -56,7 +71,8 @@ extension PeekabooAgentService {
             model: configuration.model,
             tools: configuration.tools,
             eventHandler: configuration.eventHandler,
-            sessionId: configuration.sessionId)
+            sessionId: configuration.sessionId,
+            enhancementOptions: configuration.enhancementOptions)
 
         // Queue of pending user messages (set by caller). For now, this is empty
         // and will be injected by higher-level chat loop when we add that support.
@@ -335,8 +351,19 @@ extension PeekabooAgentService {
             let toolArguments = AgentToolArguments(toolCall.arguments)
             let result = try await tool.execute(toolArguments, context: executionContext)
             var toolValue = result
+
+            if let options = context.enhancementOptions,
+               let annotated = await self.annotateVerifiedToolResult(
+                toolName: toolCall.name,
+                arguments: toolArguments,
+                result: toolValue,
+                options: options)
+            {
+                toolValue = annotated
+            }
+
             if case let .stopAfterCurrentStep(reason) = boundaryDecision {
-                toolValue = self.addTurnBoundaryStopReason(reason, to: result)
+                toolValue = self.addTurnBoundaryStopReason(reason, to: toolValue)
             }
             let toolResult = AgentToolResult.success(toolCallId: toolCall.id, result: toolValue)
             await self.sendToolCompletionEvent(

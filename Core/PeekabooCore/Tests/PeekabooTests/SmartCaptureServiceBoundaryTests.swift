@@ -93,6 +93,29 @@ struct SmartCaptureServiceBoundaryTests {
         #expect(capture.captureScreenCount == 3)
         #expect(appResolver.frontmostCallCount == 5)
     }
+
+    @Test
+    func `captureAfterAction uses region capture for targeted actions`() async throws {
+        let capture = StubSmartScreenCaptureService()
+        let service = SmartCaptureService(
+            captureService: capture,
+            applicationResolver: StubSmartApplicationResolver(appName: "TestApp"),
+            screenService: StubSmartScreenService(primary: ScreenInfo(
+                index: 0,
+                name: "Primary",
+                frame: CGRect(x: 0, y: 0, width: 200, height: 200),
+                visibleFrame: CGRect(x: 0, y: 0, width: 200, height: 200),
+                isPrimary: true,
+                scaleFactor: 2,
+                displayID: 1)))
+
+        _ = try await service.captureAfterAction(
+            toolName: "click",
+            targetPoint: CGPoint(x: 80, y: 60))
+
+        #expect(capture.capturedAreas == [CGRect(x: 0, y: 0, width: 200, height: 200)])
+        #expect(capture.captureScreenCount == 1)
+    }
 }
 
 @MainActor

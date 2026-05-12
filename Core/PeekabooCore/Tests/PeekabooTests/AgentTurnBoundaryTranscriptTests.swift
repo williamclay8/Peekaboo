@@ -34,7 +34,7 @@ struct AgentTurnBoundaryTranscriptTests {
             currentMessages: &messages,
             stepIndex: 0)
 
-        #expect(step.toolResults.map(\.toolCallId) == ["see-call", "click-call", "type-call"])
+        #expect(step.toolResults.map { $0.toolCallId } == ["see-call", "click-call", "type-call"])
         #expect(step.toolResults.count == toolCalls.count)
         #expect(step.toolResults[2].isError)
 
@@ -77,7 +77,7 @@ struct AgentTurnBoundaryTranscriptTests {
             currentMessages: &messages,
             stepIndex: 0)
 
-        #expect(step.toolResults.map(\.toolCallId) == ["known-call", "missing-call"])
+        #expect(step.toolResults.map { $0.toolCallId } == ["known-call", "missing-call"])
         #expect(step.toolResults[1].isError)
         #expect(messages.count(where: { $0.role == .tool }) == toolCalls.count)
     }

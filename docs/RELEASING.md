@@ -87,6 +87,16 @@ Peekaboo’s macOS app now ships Sparkle updates (Settings → About). Updates a
 - [ ] Homebrew verify (after tap update): `brew update && brew upgrade steipete/tap/peekaboo && peekaboo --version` and **leave Homebrew-installed** at the end.
 - [ ] Fresh-temp smoke: `rm -rf /tmp/peekaboo-empty && mkdir /tmp/peekaboo-empty && cd /tmp/peekaboo-empty && npx peekaboo@<version> --help` (no runner; outside repo). Ensure CLI/help prints and exits 0.
 
+## 6b) Live docs-site trust checks
+When a release changes docs, security assets, or any command that affects the public site, verify the deployed site directly:
+
+- [ ] `https://peekaboo.sh/.well-known/security.txt` returns `200`.
+- [ ] `https://peekaboo.sh/security.txt` returns `200`.
+- [ ] `https://peekaboo.sh/sitemap.xml` contains `https://peekaboo.sh/` exactly once.
+- [ ] Run `scripts/visual-qa-demo.sh` with `LOCAL_URL=https://peekaboo.sh`, `LIVE_URL=https://peekaboo.sh`, and `PEEKABOO_CAPTURE=1` when you need a live visual proof set.
+- [ ] Save artifacts under `output/visual-qa/<utc timestamp>/` and include the path in the release notes or QA handoff.
+- [ ] Do not mark the release green until the live checks above pass after the merge or deployment that matters.
+
 ## Quick status helpers
 ```bash
 git status -sb

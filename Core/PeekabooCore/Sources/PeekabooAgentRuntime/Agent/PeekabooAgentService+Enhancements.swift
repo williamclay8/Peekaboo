@@ -72,8 +72,7 @@ extension PeekabooAgentService {
     func executeToolWithVerification(
         _ tool: AgentTool,
         arguments: AgentToolArguments,
-        options: AgentEnhancementOptions,
-        retryCount: Int = 0) async throws -> (result: AnyAgentToolValue, verified: Bool)
+        options: AgentEnhancementOptions) async throws -> (result: AnyAgentToolValue, verified: Bool)
     {
         // Execute the tool
         let executionContext = ToolExecutionContext(
@@ -114,23 +113,41 @@ extension PeekabooAgentService {
         // Verification failed
         logger.warning("Action verification failed: \(verification.observation)")
 
-        // Check if we should retry
-        if verification.shouldRetry, retryCount < options.maxVerificationRetries {
-            logger.info("Retrying action (attempt \(retryCount + 1)/\(options.maxVerificationRetries))")
+        // Keep verification advisory only here. Re-running the tool would risk
+        // repeating mutating desktop actions such as clicks, typing, or drags.
+        return (result, false)
+    }
 
-            // Small delay before retry
-            try await Task.sleep(nanoseconds: 500_000_000) // 0.5s
-
-            return try await self.executeToolWithVerification(
-                tool,
-                arguments: arguments,
-                options: options,
-                retryCount: retryCount + 1)
+    /// Annotate a tool result with verification metadata when verification is enabled.
+    func annotateVerifiedToolResult(
+        toolName: String,
+        arguments: AgentToolArguments,
+        result: AnyAgentToolValue,
+        options: AgentEnhancementOptions) async -> AnyAgentToolValue?
+    {
+        guard self.actionVerifier.shouldVerify(toolName: toolName, options: options) else {
+            return nil
         }
 
-        // Return failure info with the result
-        // The caller can decide how to handle this
-        return (result, false)
+        let action = ActionDescriptor(
+            toolName: toolName,
+            arguments: arguments.stringDictionary,
+            targetElement: arguments["element"]?.stringValue ?? arguments["target"]?.stringValue,
+            targetPoint: self.extractTargetPoint(from: arguments))
+
+        do {
+            let verification = try await self.actionVerifier.verify(action: action)
+
+            if self.isVerbose {
+                self.logger.debug(
+                    "Verification for \(toolName): success=\(verification.success), confidence=\(verification.confidence)")
+            }
+
+            return self.annotatedResult(result, with: verification)
+        } catch {
+            self.logger.warning("Action verification failed: \(error.localizedDescription)")
+            return nil
+        }
     }
 
     // MARK: - Smart Capture Integration
@@ -158,6 +175,42 @@ extension PeekabooAgentService {
             image: image,
             changed: true,
             metadata: .fresh(capturedAt: Date()))
+    }
+
+    private func annotatedResult(
+        _ result: AnyAgentToolValue,
+        with verification: VerificationResult) -> AnyAgentToolValue
+    {
+        let verificationObject: [String: Any] = {
+            var payload: [String: Any] = [
+                "success": verification.success,
+                "confidence": Double(verification.confidence),
+                "observation": verification.observation,
+                "should_retry": verification.shouldRetry,
+            ]
+            if let suggestion = verification.suggestion {
+                payload["suggestion"] = suggestion
+            }
+            return payload
+        }()
+
+        do {
+            let json = try result.toJSON()
+            var payload = json as? [String: Any] ?? ["result": json]
+            payload["verification"] = verificationObject
+            return try AnyAgentToolValue.fromJSON(payload)
+        } catch {
+            return AnyAgentToolValue(object: [
+                "result": result,
+                "verification": AnyAgentToolValue(object: [
+                    "success": AnyAgentToolValue(bool: verification.success),
+                    "confidence": AnyAgentToolValue(double: Double(verification.confidence)),
+                    "observation": AnyAgentToolValue(string: verification.observation),
+                    "should_retry": AnyAgentToolValue(bool: verification.shouldRetry),
+                    "suggestion": verification.suggestion.map { AnyAgentToolValue(string: $0) } ?? AnyAgentToolValue(null: ()),
+                ]),
+            ])
+        }
     }
 
     /// Convert CaptureResult image data to CGImage.
@@ -256,14 +309,6 @@ extension PeekabooAgentService {
         initialMessages: [ModelMessage],
         queueMode: QueueMode = .oneAtATime) async throws -> StreamingLoopOutcome
     {
-        var messages = initialMessages
-
-        // Inject initial desktop context if enabled
-        await injectDesktopContext(
-            into: &messages,
-            options: configuration.enhancementOptions,
-            tools: configuration.tools)
-
         // Convert to standard configuration, passing through enhancement options
         let standardConfig = StreamingLoopConfiguration(
             model: configuration.model,
@@ -272,14 +317,14 @@ extension PeekabooAgentService {
             eventHandler: configuration.eventHandler,
             enhancementOptions: configuration.enhancementOptions)
 
-        // TODO: Full integration would modify runStreamingLoop to call
-        // injectDesktopContext before each LLM turn and executeToolWithVerification
-        // for each tool call. For now, we just inject once at the start.
+        // The shared streaming loop now handles post-tool verification. We still
+        // rely on the shared streaming loop for context injection and keep this
+        // wrapper as a thin forwarder to avoid double-injecting desktop state.
 
         return try await runStreamingLoop(
             configuration: standardConfig,
             maxSteps: maxSteps,
-            initialMessages: messages,
+            initialMessages: initialMessages,
             queueMode: queueMode)
     }
 }

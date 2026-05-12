@@ -8,6 +8,7 @@
 import CoreGraphics
 import Foundation
 import Testing
+@_spi(Testing) import PeekabooAutomationKit
 @testable import PeekabooAgentRuntime
 
 struct ActionDescriptorTests {
@@ -149,5 +150,78 @@ struct VerificationErrorTests {
 
         #expect(error.errorDescription?.contains("parse") == true)
         #expect(error.errorDescription?.contains("Invalid JSON") == true)
+    }
+}
+
+@MainActor
+struct ActionVerifierGatingTests {
+    @Test
+    func `Verification is enabled only for mutating tools when requested`() {
+        let verifier = ActionVerifier(smartCapture: SmartCaptureService(captureService: NoopScreenCaptureService()))
+
+        #expect(verifier.shouldVerify(toolName: "click", options: .verified))
+        #expect(verifier.shouldVerify(toolName: "type", options: .verified))
+        #expect(!verifier.shouldVerify(toolName: "see", options: .verified))
+        #expect(!verifier.shouldVerify(toolName: "clipboard", options: .verified))
+        #expect(!verifier.shouldVerify(toolName: "click", options: .minimal))
+    }
+}
+
+@MainActor
+private final class NoopScreenCaptureService: ScreenCaptureServiceProtocol {
+    private let imageData = ScreenCaptureService.TestFixtures.makeImage(
+        width: 8,
+        height: 8,
+        color: .systemBlue)
+
+    func captureScreen(
+        displayIndex _: Int?,
+        visualizerMode _: CaptureVisualizerMode,
+        scale _: CaptureScalePreference) async throws -> CaptureResult
+    {
+        self.result(mode: .screen)
+    }
+
+    func captureWindow(
+        appIdentifier _: String,
+        windowIndex _: Int?,
+        visualizerMode _: CaptureVisualizerMode,
+        scale _: CaptureScalePreference) async throws -> CaptureResult
+    {
+        self.result(mode: .window)
+    }
+
+    func captureWindow(
+        windowID _: CGWindowID,
+        visualizerMode _: CaptureVisualizerMode,
+        scale _: CaptureScalePreference) async throws -> CaptureResult
+    {
+        self.result(mode: .window)
+    }
+
+    func captureFrontmost(
+        visualizerMode _: CaptureVisualizerMode,
+        scale _: CaptureScalePreference) async throws -> CaptureResult
+    {
+        self.result(mode: .frontmost)
+    }
+
+    func captureArea(
+        _ rect: CGRect,
+        visualizerMode _: CaptureVisualizerMode,
+        scale _: CaptureScalePreference) async throws -> CaptureResult
+    {
+        _ = rect
+        return self.result(mode: .area)
+    }
+
+    func hasScreenRecordingPermission() async -> Bool {
+        true
+    }
+
+    private func result(mode: CaptureMode) -> CaptureResult {
+        CaptureResult(
+            imageData: self.imageData,
+            metadata: CaptureMetadata(size: CGSize(width: 8, height: 8), mode: mode))
     }
 }
